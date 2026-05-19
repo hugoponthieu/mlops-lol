@@ -6,7 +6,7 @@ from kfp.dsl import component, Input, Output, Dataset, Model
     packages_to_install=["pandas==3.01", "sklearn", "joblib", "os"],
 )
 def preprocessing(
-    input_results_dataset: Input[Dataset],
+    featured_results_dataset: Input[Dataset],
     train_data_set: Output[Dataset],
     test_data_set: Output[Dataset],
     preprocessing_joblib: Output[Model],
@@ -17,9 +17,8 @@ def preprocessing(
     from sklearn.preprocessing import StandardScaler
     from sklearn.compose import ColumnTransformer
     import joblib
-    import os
 
-    df = pd.read_csv(input_results_dataset.path)
+    df = pd.read_csv(featured_results_dataset.path)
 
     df["date"] = pd.to_datetime(df["date"])
     split_date = df["date"].quantile(0.9)
