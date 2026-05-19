@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: cs-go-match-predictor-00-data-exploration
+Version: 0.1.0
+Requires-Python: >=3.14
+Requires-Dist: pandas==3.0.1
+Requires-Dist: dvc[s3]==3.67.0
+Requires-Dist: python-dotenv==1.2.2
+Provides-Extra: dev
+Requires-Dist: ipykernel; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: ipywidgets; extra == "dev"
+Requires-Dist: pandas-stubs; extra == "dev"

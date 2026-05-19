@@ -1,0 +1,10 @@
+pandas==3.0.2
+numpy==2.4.4
+pygments==2.20.0
+
+[dev]
+ipykernel
+mypy
+ruff
+ipywidgets
+pandas-stubs

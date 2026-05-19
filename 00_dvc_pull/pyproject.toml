@@ -1,0 +1,17 @@
+[project]
+name = "cs-go-match-predictor-00-dvc-pull"
+version = "0.1.0"
+requires-python = ">= 3.14"
+
+dependencies = [
+    "pandas==3.0.2",
+    "dvc[s3]==3.67.1",
+    "python-dotenv==1.2.2",
+    "gitpython==3.1.50", # CVE-2026-42215, 42284, 44243, 44244, GHSA-mv93-w799-cj2w
+    "aiohttp==3.13.5", # CVE-2026-22815, 34515, 34516, 34525
+    "cryptography==48.0.0", # CVE-2026-39892
+    "pygments==2.20.0" # CVE-2026-4539
+]
+
+[project.optional-dependencies]
+dev = ["ipykernel", "mypy", "ruff", "ipywidgets", "pandas-stubs"]

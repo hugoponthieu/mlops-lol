@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: cs-go-match-predictor-04-evaluate-model
+Version: 0.1.0
+Requires-Python: >=3.12
+Requires-Dist: pandas==3.0.2
+Requires-Dist: tensorflow==2.21.0
+Requires-Dist: scikit-learn==1.8.0
+Requires-Dist: joblib==1.5.3
+Requires-Dist: numpy==2.4.4
+Requires-Dist: requests==2.33.1
+Requires-Dist: pygments==2.20.0
+Provides-Extra: dev
+Requires-Dist: ipykernel; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: ipywidgets; extra == "dev"
+Requires-Dist: pandas-stubs; extra == "dev"

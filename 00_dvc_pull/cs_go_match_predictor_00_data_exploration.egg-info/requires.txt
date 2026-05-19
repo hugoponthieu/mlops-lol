@@ -1,0 +1,10 @@
+pandas==3.0.1
+dvc[s3]==3.67.0
+python-dotenv==1.2.2
+
+[dev]
+ipykernel
+mypy
+ruff
+ipywidgets
+pandas-stubs

@@ -1,0 +1,14 @@
+[project]
+name = "cs-go-match-predictor-02-preprocessing"
+version = "0.1.0"
+requires-python = ">= 3.14"
+
+dependencies = [
+    "pandas==3.0.2",
+    "scikit-learn==1.8.0",
+    "joblib==1.5.3",
+    "pygments==2.20.0" # CVE-2026-4539
+]
+
+[project.optional-dependencies]
+dev = ["ipykernel", "mypy", "ruff", "ipywidgets", "pandas-stubs"]

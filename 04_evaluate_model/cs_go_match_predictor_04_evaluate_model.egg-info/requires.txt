@@ -1,0 +1,14 @@
+pandas==3.0.2
+tensorflow==2.21.0
+scikit-learn==1.8.0
+joblib==1.5.3
+numpy==2.4.4
+requests==2.33.1
+pygments==2.20.0
+
+[dev]
+ipykernel
+mypy
+ruff
+ipywidgets
+pandas-stubs
