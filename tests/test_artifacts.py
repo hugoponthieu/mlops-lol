@@ -277,3 +277,100 @@ def test_notebook_05_runtime_contract_writes_metrics_predictions_and_plot(tmp_pa
     assert len(predictions) == n_test
     assert ((predictions["blue_win_prob"] >= 0.0) & (predictions["blue_win_prob"] <= 1.0)).all()
     assert set(predictions["blue_team_win"].unique()).issubset({0, 1})
+
+
+def test_notebook_06_runtime_contract_exports_prediction_artifact(tmp_path, monkeypatch):
+    notebook_path = Path("notebooks/06_predict_match.ipynb").resolve()
+    source = _load_notebook_source(notebook_path)
+    assert "from mlops" not in source
+    assert "import sys" not in source
+
+    project_root = tmp_path / "project"
+    artifacts_dir = project_root / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+
+    feature_columns = [
+        "elo_diff",
+        "winrate_last_5_diff",
+        "winrate_last_10_diff",
+        "winrate_last_20_diff",
+        "matches_played_diff",
+        "days_since_last_match_diff",
+        "head_to_head_winrate_diff",
+        "blue_side_team_winrate",
+        "red_side_team_winrate",
+    ]
+    (artifacts_dir / "feature_columns.json").write_text(json.dumps(feature_columns))
+
+    history_rows = [
+        {"season": 1, "date": "2024-01-01", "event": "Main", "patch": "1.0",
+         "blue_team": "AAA", "red_team": "BBB", "winner": "AAA", "blue_team_win": 1},
+        {"season": 1, "date": "2024-01-02", "event": "Main", "patch": "1.0",
+         "blue_team": "AAA", "red_team": "CCC", "winner": "AAA", "blue_team_win": 1},
+        {"season": 1, "date": "2024-01-03", "event": "Main", "patch": "1.0",
+         "blue_team": "DDD", "red_team": "AAA", "winner": "AAA", "blue_team_win": 0},
+        {"season": 1, "date": "2024-01-04", "event": "Main", "patch": "1.0",
+         "blue_team": "BBB", "red_team": "CCC", "winner": "BBB", "blue_team_win": 1},
+        {"season": 1, "date": "2024-01-05", "event": "Main", "patch": "1.0",
+         "blue_team": "CCC", "red_team": "DDD", "winner": "DDD", "blue_team_win": 0},
+        {"season": 1, "date": "2024-01-06", "event": "Main", "patch": "1.0",
+         "blue_team": "AAA", "red_team": "DDD", "winner": "AAA", "blue_team_win": 1},
+    ]
+    history_df = pd.DataFrame(history_rows)
+    history_df.to_csv(artifacts_dir / "clean_matches.csv", index=False)
+
+    import numpy as np
+    from sklearn.compose import ColumnTransformer, make_column_selector
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    rng = np.random.default_rng(0)
+    n_train = 60
+    train_X = pd.DataFrame(
+        rng.normal(size=(n_train, len(feature_columns))), columns=feature_columns
+    )
+    train_y = (train_X["elo_diff"] > 0).astype(int)
+
+    numeric_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, make_column_selector(dtype_include=["number"])),
+        ]
+    )
+    model = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("classifier", LogisticRegression(max_iter=1000)),
+        ]
+    )
+    model.fit(train_X, train_y)
+    joblib.dump(model, artifacts_dir / "logistic_regression_model.joblib")
+
+    _execute_notebook(str(notebook_path), project_root, monkeypatch, cwd_subdir="notebooks")
+
+    result_path = artifacts_dir / "predicted_match_result.csv"
+    assert result_path.exists()
+
+    result = pd.read_csv(result_path)
+    assert list(result.columns) == [
+        "date",
+        "blue_team",
+        "red_team",
+        "blue_win_prob",
+        "red_win_prob",
+        "predicted_winner",
+    ]
+    assert len(result) == 1
+
+    row = result.iloc[0]
+    assert 0.0 <= row["blue_win_prob"] <= 1.0
+    assert 0.0 <= row["red_win_prob"] <= 1.0
+    assert abs((row["blue_win_prob"] + row["red_win_prob"]) - 1.0) < 1e-9
+    assert row["predicted_winner"] in {row["blue_team"], row["red_team"]}
