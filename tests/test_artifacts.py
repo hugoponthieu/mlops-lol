@@ -27,17 +27,22 @@ def _load_notebook_source(path: Path) -> str:
     )
 
 
-def _execute_notebook_01(project_root: Path, monkeypatch) -> pd.DataFrame:
-    notebook = json.loads(Path("notebooks/01_data_pull_and_audit.ipynb").read_text())
+def _execute_notebook(
+    notebook_relpath: str,
+    project_root: Path,
+    monkeypatch,
+    cwd_subdir: str | None = None,
+) -> None:
+    notebook = json.loads(Path(notebook_relpath).read_text())
     code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code" and cell["source"]]
 
-    monkeypatch.chdir(project_root)
+    target_cwd = project_root if cwd_subdir is None else project_root / cwd_subdir
+    target_cwd.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(target_cwd)
 
     exec_globals = {"__name__": "__main__"}
     for cell in code_cells:
         exec("".join(cell["source"]), exec_globals)
-
-    return pd.read_csv(project_root / "artifacts" / "clean_matches.csv", parse_dates=["date"])
 
 
 def _extract_returned_columns(function_node: ast.FunctionDef) -> list[str]:
@@ -99,25 +104,13 @@ def test_notebook_01_runtime_contract_from_repo_root_cwd(tmp_path, monkeypatch):
         ]
     ).to_csv(data_dir / "matchs_stats.csv", index=False)
 
-    clean_matches = _execute_notebook_01(project_root, monkeypatch)
+    _execute_notebook("notebooks/01_data_pull_and_audit.ipynb", project_root, monkeypatch)
+    clean_matches = pd.read_csv(project_root / "artifacts" / "clean_matches.csv", parse_dates=["date"])
 
     assert (project_root / "artifacts" / "clean_matches.csv").exists()
     assert list(clean_matches.columns) == EXPECTED_COLUMNS
     assert clean_matches["date"].dt.strftime("%Y-%m-%d").tolist() == ["2024-01-01", "2024-01-02"]
     assert clean_matches["blue_team_win"].tolist() == [0, 1]
-
-
-def _execute_notebook(notebook_relpath: str, project_root: Path, monkeypatch) -> None:
-    notebook = json.loads(Path(notebook_relpath).read_text())
-    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code" and cell["source"]]
-
-    notebooks_dir = project_root / "notebooks"
-    notebooks_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.chdir(notebooks_dir)
-
-    exec_globals = {"__name__": "__main__"}
-    for cell in code_cells:
-        exec("".join(cell["source"]), exec_globals)
 
 
 def test_notebook_04_runtime_contract_writes_model_and_predictions(tmp_path, monkeypatch):
@@ -168,7 +161,7 @@ def test_notebook_04_runtime_contract_writes_model_and_predictions(tmp_path, mon
         artifacts_dir / "valid_labels.csv", index=False
     )
 
-    _execute_notebook(str(notebook_path), project_root, monkeypatch)
+    _execute_notebook(str(notebook_path), project_root, monkeypatch, cwd_subdir="notebooks")
 
     model_path = artifacts_dir / "logistic_regression_model.joblib"
     predictions_path = artifacts_dir / "validation_predictions.csv"
