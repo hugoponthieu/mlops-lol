@@ -6,10 +6,10 @@
 - feature engineering
 - preprocessing
 - train model
-
 - evaluate
 
 I need to create one notebooks for each steps
+The goal is to predict witch team will win a match
 
 season,
 date,

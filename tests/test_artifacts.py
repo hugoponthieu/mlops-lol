@@ -2,6 +2,7 @@ from pathlib import Path
 import ast
 import json
 
+import joblib
 import pandas as pd
 
 EXPECTED_COLUMNS = [
@@ -104,3 +105,97 @@ def test_notebook_01_runtime_contract_from_repo_root_cwd(tmp_path, monkeypatch):
     assert list(clean_matches.columns) == EXPECTED_COLUMNS
     assert clean_matches["date"].dt.strftime("%Y-%m-%d").tolist() == ["2024-01-01", "2024-01-02"]
     assert clean_matches["blue_team_win"].tolist() == [0, 1]
+
+
+def _execute_notebook(notebook_relpath: str, project_root: Path, monkeypatch) -> None:
+    notebook = json.loads(Path(notebook_relpath).read_text())
+    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code" and cell["source"]]
+
+    notebooks_dir = project_root / "notebooks"
+    notebooks_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(notebooks_dir)
+
+    exec_globals = {"__name__": "__main__"}
+    for cell in code_cells:
+        exec("".join(cell["source"]), exec_globals)
+
+
+def test_notebook_04_runtime_contract_writes_model_and_predictions(tmp_path, monkeypatch):
+    notebook_path = Path("notebooks/04_train_probability_model.ipynb").resolve()
+    source = _load_notebook_source(notebook_path)
+    assert "from mlops" not in source
+    assert "import sys" not in source
+
+    project_root = tmp_path / "project"
+    artifacts_dir = project_root / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+
+    feature_columns = [
+        "elo_diff",
+        "winrate_last_5_diff",
+        "winrate_last_10_diff",
+        "winrate_last_20_diff",
+        "matches_played_diff",
+        "days_since_last_match_diff",
+        "head_to_head_winrate_diff",
+        "blue_side_team_winrate",
+        "red_side_team_winrate",
+    ]
+
+    train_rows = [
+        [10.0, 0.2, 0.1, 0.05, 1, 5, 0.5, 0.55, 0.45],
+        [-15.0, -0.3, -0.2, -0.1, -2, 7, 0.0, 0.40, 0.60],
+        [20.0, 0.4, 0.3, 0.2, 3, 2, 0.6, 0.65, 0.50],
+        [-5.0, -0.1, -0.05, 0.0, 0, 10, 0.5, 0.50, 0.55],
+        [25.0, 0.5, 0.4, 0.3, 4, 1, 0.7, 0.70, 0.45],
+        [-25.0, -0.5, -0.4, -0.3, -3, 9, 0.3, 0.35, 0.65],
+    ]
+    valid_rows = [
+        [8.0, 0.15, 0.1, 0.05, 1, 4, 0.5, 0.55, 0.50],
+        [-12.0, -0.25, -0.2, -0.1, -1, 6, 0.4, 0.45, 0.60],
+    ]
+
+    pd.DataFrame(train_rows, columns=feature_columns).to_csv(
+        artifacts_dir / "train_features.csv", index=False
+    )
+    pd.DataFrame(valid_rows, columns=feature_columns).to_csv(
+        artifacts_dir / "valid_features.csv", index=False
+    )
+    pd.DataFrame({"blue_team_win": [1, 0, 1, 0, 1, 0]}).to_csv(
+        artifacts_dir / "train_labels.csv", index=False
+    )
+    pd.DataFrame({"blue_team_win": [1, 0]}).to_csv(
+        artifacts_dir / "valid_labels.csv", index=False
+    )
+
+    _execute_notebook("notebooks/04_train_probability_model.ipynb", project_root, monkeypatch)
+
+    model_path = artifacts_dir / "logistic_regression_model.joblib"
+    predictions_path = artifacts_dir / "validation_predictions.csv"
+    manifest_path = artifacts_dir / "train_manifest.json"
+
+    assert model_path.exists()
+    assert predictions_path.exists()
+    assert manifest_path.exists()
+
+    model = joblib.load(model_path)
+    sample = pd.DataFrame(valid_rows, columns=feature_columns)
+    probs = model.predict_proba(sample)
+    assert probs.shape == (2, 2)
+    assert ((probs >= 0.0) & (probs <= 1.0)).all()
+
+    predictions = pd.read_csv(predictions_path)
+    assert list(predictions.columns) == ["blue_win_prob", "blue_team_win"]
+    assert len(predictions) == 2
+    assert ((predictions["blue_win_prob"] >= 0.0) & (predictions["blue_win_prob"] <= 1.0)).all()
+    assert predictions["blue_team_win"].tolist() == [1, 0]
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["model_name"] == "logistic_regression"
+    assert manifest["train_rows"] == 6
+    assert manifest["valid_rows"] == 2
+    assert manifest["feature_columns"] == feature_columns
+
+    source = _load_notebook_source(Path("notebooks/04_train_probability_model.ipynb"))
+    assert "from mlops" not in source
+    assert "import sys" not in source

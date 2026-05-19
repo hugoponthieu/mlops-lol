@@ -15,6 +15,7 @@ def build_feature_state(df, base_elo=1500):
         state["matches_played"][team] = 0
         state["win_history"][team] = []
     return state
+
 def compute_features_for_match(match, state):
     """Compute feature vector for a single match"""
     import numpy as np  # type: ignore
@@ -70,6 +71,7 @@ def compute_features_for_match(match, state):
         "rank_diff": rank_diff,
         "h2h_winrate": h2h_winrate,
     }
+
 def match_to_features(preprocessor, history_df, match):
     """
     match: dict with team_1, team_2, rank_1, rank_2, date
