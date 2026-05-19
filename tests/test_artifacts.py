@@ -188,3 +188,92 @@ def test_notebook_04_runtime_contract_writes_model_and_predictions(tmp_path, mon
     assert manifest["train_rows"] == 6
     assert manifest["valid_rows"] == 2
     assert manifest["feature_columns"] == feature_columns
+
+
+def test_notebook_05_runtime_contract_writes_metrics_predictions_and_plot(tmp_path, monkeypatch):
+    notebook_path = Path("notebooks/05_evaluation_and_calibration.ipynb").resolve()
+    source = _load_notebook_source(notebook_path)
+    assert "from mlops" not in source
+    assert "import sys" not in source
+
+    project_root = tmp_path / "project"
+    artifacts_dir = project_root / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+
+    feature_columns = [
+        "elo_diff",
+        "winrate_last_5_diff",
+        "winrate_last_10_diff",
+        "winrate_last_20_diff",
+        "matches_played_diff",
+        "days_since_last_match_diff",
+        "head_to_head_winrate_diff",
+        "blue_side_team_winrate",
+        "red_side_team_winrate",
+    ]
+
+    import numpy as np
+    from sklearn.compose import ColumnTransformer, make_column_selector
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    rng = np.random.default_rng(0)
+    n_train = 60
+    n_test = 30
+    train_X = pd.DataFrame(
+        rng.normal(size=(n_train, len(feature_columns))), columns=feature_columns
+    )
+    train_y = (train_X["elo_diff"] > 0).astype(int)
+    test_X = pd.DataFrame(
+        rng.normal(size=(n_test, len(feature_columns))), columns=feature_columns
+    )
+    test_y = (test_X["elo_diff"] > 0).astype(int)
+
+    numeric_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, make_column_selector(dtype_include=["number"])),
+        ]
+    )
+    model = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("classifier", LogisticRegression(max_iter=1000)),
+        ]
+    )
+    model.fit(train_X, train_y)
+    joblib.dump(model, artifacts_dir / "logistic_regression_model.joblib")
+
+    test_X.to_csv(artifacts_dir / "test_features.csv", index=False)
+    pd.DataFrame({"blue_team_win": test_y.tolist()}).to_csv(
+        artifacts_dir / "test_labels.csv", index=False
+    )
+
+    _execute_notebook(str(notebook_path), project_root, monkeypatch, cwd_subdir="notebooks")
+
+    metrics_path = artifacts_dir / "evaluation_metrics.json"
+    predictions_path = artifacts_dir / "test_predictions.csv"
+    plot_path = artifacts_dir / "plots" / "calibration_curve.png"
+
+    assert metrics_path.exists()
+    assert predictions_path.exists()
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
+
+    metrics = json.loads(metrics_path.read_text())
+    assert set(metrics.keys()) == {"log_loss", "brier_score", "roc_auc", "accuracy_50"}
+    for key, value in metrics.items():
+        assert isinstance(value, float), f"metric {key!r} must be a float"
+
+    predictions = pd.read_csv(predictions_path)
+    assert list(predictions.columns) == ["blue_win_prob", "blue_team_win"]
+    assert len(predictions) == n_test
+    assert ((predictions["blue_win_prob"] >= 0.0) & (predictions["blue_win_prob"] <= 1.0)).all()
+    assert set(predictions["blue_team_win"].unique()).issubset({0, 1})
