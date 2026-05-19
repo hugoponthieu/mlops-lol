@@ -1,4 +1,4 @@
-from kfp.dsl import component, Output, Dataset
+from kfp.dsl import component, Input, Output, Dataset
 
 @component(
     base_image="python:3.14",
@@ -138,7 +138,7 @@ def feature_engineering(input_results_dataset: Input[Dataset], featured_results_
     X = []
     y = []
 
-# Construct the features entirely from computed values, that's why X doesn't event concat the features with df
+    # Construct the features entirely from computed values, that's why X doesn't event concat the features with df
     for _, match in df.iterrows():
         feats = compute_features_for_match(match, state)
         X.append(feats)
@@ -147,23 +147,5 @@ def feature_engineering(input_results_dataset: Input[Dataset], featured_results_
 
     df_featured = pd.concat([df, pd.DataFrame(X), pd.Series(y, name="team_1_wins")], axis=1)
 
-
-
-
-
-
-
-
-
-
-    repo = DVCFileSystem(
-        "https://github.com/hugoponthieu/mlops-lol.git",
-        rev="feat/teacher-notebooks"
-    )
-
-    with repo.open(results_dataset.path) as f:
-        df = pd.read_csv(f)
-
-    df.to_csv(f"{results_dataset.path}/raw/results.csv")
-
+    df_featured.to_csv(f"{featured_results_dataset}/featured/results.csv", index=False)
 
