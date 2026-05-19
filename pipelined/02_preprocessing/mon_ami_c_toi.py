@@ -1,4 +1,4 @@
-from kfp.dsl import component, Input, Output, Dataset
+from kfp.dsl import component, Input, Output, Dataset, Model
 
 
 @component(
@@ -9,7 +9,7 @@ def preprocessing(
     input_results_dataset: Input[Dataset],
     train_data_set: Output[Dataset],
     test_data_set: Output[Dataset],
-    preprocessing_joblib: Output[Dataset],
+    preprocessing_joblib: Output[Model],
 ):
     import pandas as pd
     from sklearn.pipeline import Pipeline
