@@ -34,6 +34,36 @@ def test_chronological_split_keeps_validation_after_training():
     assert valid_df["date"].max() < test_df["date"].min()
 
 
+def test_chronological_split_keeps_same_day_rows_in_one_partition():
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                [
+                    "2024-01-01",
+                    "2024-01-02",
+                    "2024-01-02",
+                    "2024-01-03",
+                    "2024-01-04",
+                    "2024-01-04",
+                    "2024-01-05",
+                ]
+            ),
+            "value": [1, 2, 3, 4, 5, 6, 7],
+        }
+    )
+
+    train_df, valid_df, test_df = chronological_split(df, train_frac=0.6, valid_frac=0.2)
+
+    assert list(train_df["value"]) == [1, 2, 3, 4]
+    assert list(valid_df["value"]) == [5, 6]
+    assert list(test_df["value"]) == [7]
+    assert set(train_df["date"]).isdisjoint(valid_df["date"])
+    assert set(train_df["date"]).isdisjoint(test_df["date"])
+    assert set(valid_df["date"]).isdisjoint(test_df["date"])
+    assert train_df["date"].max() < valid_df["date"].min()
+    assert valid_df["date"].max() < test_df["date"].min()
+
+
 def test_split_features_and_target_drops_label_and_context_fields():
     df = pd.DataFrame(
         {
@@ -109,7 +139,7 @@ def test_notebook_03_exports_split_artifacts_from_repo_root_cwd(tmp_path, monkey
         [
             {
                 "season": 1,
-                "date": "2024-01-03",
+                "date": "2024-01-02",
                 "event": "Main",
                 "patch": "14.1",
                 "blue_team": "AAA",
@@ -185,13 +215,13 @@ def test_notebook_03_exports_split_artifacts_from_repo_root_cwd(tmp_path, monkey
             },
             {
                 "season": 1,
-                "date": "2024-01-04",
+                "date": "2024-01-03",
                 "event": "Main",
                 "patch": "14.1",
                 "blue_team": "III",
                 "red_team": "JJJ",
-                "winner": pd.NA,
-                "blue_team_win": pd.NA,
+                "winner": "III",
+                "blue_team_win": 1,
                 "elo_diff": 1.0,
                 "winrate_last_5_diff": 0.00,
                 "winrate_last_10_diff": 0.00,
@@ -201,6 +231,63 @@ def test_notebook_03_exports_split_artifacts_from_repo_root_cwd(tmp_path, monkey
                 "head_to_head_winrate_diff": 0.00,
                 "blue_side_team_winrate": 0.50,
                 "red_side_team_winrate": 0.50,
+            },
+            {
+                "season": 1,
+                "date": "2024-01-04",
+                "event": "Main",
+                "patch": "14.1",
+                "blue_team": "KKK",
+                "red_team": "LLL",
+                "winner": "LLL",
+                "blue_team_win": 0,
+                "elo_diff": 2.0,
+                "winrate_last_5_diff": 0.01,
+                "winrate_last_10_diff": 0.01,
+                "winrate_last_20_diff": 0.01,
+                "matches_played_diff": 1,
+                "days_since_last_match_diff": 1,
+                "head_to_head_winrate_diff": 0.05,
+                "blue_side_team_winrate": 0.51,
+                "red_side_team_winrate": 0.49,
+            },
+            {
+                "season": 1,
+                "date": "2024-01-04",
+                "event": "Main",
+                "patch": "14.1",
+                "blue_team": "OOO",
+                "red_team": "PPP",
+                "winner": "OOO",
+                "blue_team_win": 1,
+                "elo_diff": 4.0,
+                "winrate_last_5_diff": 0.04,
+                "winrate_last_10_diff": 0.04,
+                "winrate_last_20_diff": 0.04,
+                "matches_played_diff": 2,
+                "days_since_last_match_diff": 3,
+                "head_to_head_winrate_diff": 0.12,
+                "blue_side_team_winrate": 0.58,
+                "red_side_team_winrate": 0.42,
+            },
+            {
+                "season": 1,
+                "date": "2024-01-06",
+                "event": "Main",
+                "patch": "14.1",
+                "blue_team": "MMM",
+                "red_team": "NNN",
+                "winner": pd.NA,
+                "blue_team_win": pd.NA,
+                "elo_diff": 3.0,
+                "winrate_last_5_diff": 0.02,
+                "winrate_last_10_diff": 0.02,
+                "winrate_last_20_diff": 0.02,
+                "matches_played_diff": 2,
+                "days_since_last_match_diff": 2,
+                "head_to_head_winrate_diff": 0.10,
+                "blue_side_team_winrate": 0.52,
+                "red_side_team_winrate": 0.48,
             },
         ]
     )
@@ -214,6 +301,9 @@ def test_notebook_03_exports_split_artifacts_from_repo_root_cwd(tmp_path, monkey
     expected_train, expected_valid, expected_test = chronological_split(labeled_df)
 
     assert outputs["feature_columns"] == FEATURE_COLUMNS
+    assert len(outputs["train_features"]) == 4
+    assert len(outputs["valid_features"]) == 2
+    assert len(outputs["test_features"]) == 1
 
     for split_name, expected_df in [
         ("train", expected_train),
