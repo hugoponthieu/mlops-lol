@@ -1,24 +1,24 @@
-from kfp.dsl import component, Input, Output, Dataset
+from kfp.dsl import component, Input, Output, Dataset, Model
 
 @component(
     base_image="python:3.14",
     packages_to_install=["pandas==3.01", "numpy", "keras.model", "joblib", "sklearn.metrics"],
 )
-def evaluate_model(input_trained_dataset: Input[Dataset, Models], evaluated_results_dataset: Output[Dataset]):
+def evaluate_model(input_preprocessed_dataset: Input[Dataset], input_raw_dataset: Input[Dataset], input_trained_dataset: Input[Dataset], input_keras_model: Input[Model], input_preprocessing_joblib: Input[Model]):
     import pandas as pd
 
-    df = pd.read_csv(f"{input_trained_dataset.path}/raw/results.csv")
+    df = pd.read_csv(f"{input_raw_dataset.path}")
     df["date"] = pd.to_datetime(df["date"])
 
-    df_test = pd.read_csv(f"{input_trained_dataset.path}/preprocessed/test.csv")
+    df_test = pd.read_csv(f"{input_preprocessed_dataset.path}")
 
     from keras.models import load_model
 
-    model = load_model(f"{input_trained_dataset.model_path}/model.keras")
+    model = load_model(f"{input_keras_model.path}")
 
     import joblib
 
-    preprocessor = joblib.load(f"{input_trained_dataset.model_path}/preprocessor.joblib")
+    preprocessor = joblib.load(f"{input_preprocessing_joblib.path}")
 
     target = "team_1_wins"
 

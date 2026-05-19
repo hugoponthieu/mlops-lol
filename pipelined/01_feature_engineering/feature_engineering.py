@@ -5,9 +5,9 @@ from kfp.dsl import component, Input, Output, Dataset
     packages_to_install=["pandas==3.01", "numpy"],
 )
 def feature_engineering(input_results_dataset: Input[Dataset], featured_results_dataset: Output[Dataset]):
-    import pandas as pd
+    import pandas as pd #type:ignore
 
-    df = pd.read_csv(f"{input_results_dataset.path}/raw/results.csv")
+    df = pd.read_csv(f"{input_results_dataset.path}")
     df["date"] = pd.to_datetime(df["date"])
 
     # We sort the datased by increasing date as ELO computation needs to be done chronologically
@@ -147,5 +147,5 @@ def feature_engineering(input_results_dataset: Input[Dataset], featured_results_
 
     df_featured = pd.concat([df, pd.DataFrame(X), pd.Series(y, name="team_1_wins")], axis=1)
 
-    df_featured.to_csv(f"{featured_results_dataset}/featured/results.csv", index=False)
+    df_featured.to_csv(f"{featured_results_dataset}", index=False)
 

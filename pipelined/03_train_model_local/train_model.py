@@ -1,13 +1,13 @@
-from kfp.dsl import component, Input, Output, Dataset
+from kfp.dsl import component, Input, Output, Dataset, Model
 
 @component(
     base_image="python:3.14",
     packages_to_install=["pandas==3.01", "numpy", "tensorflow", "tf2onnx", "onnx", "keras", "mlflow.models", "sklearn.model_selection"],
 )
-def train_model(input_results_dataset: Input[Dataset], trained_results_dataset: Output[Dataset]):
+def train_model(input_results_dataset: Input[Dataset], val_results_dataset: Output[Dataset], trained_results_dataset: Output[Dataset], output_model_keras: Output[Model], output_model_onnx: Output[Model]):
     import pandas as pd
 
-    df = pd.read_csv(f"{input_results_dataset.path}/preprocessed/train.csv")
+    df = pd.read_csv(f"{input_results_dataset.path}")
 
     target = "team_1_wins"
 
@@ -81,7 +81,7 @@ def train_model(input_results_dataset: Input[Dataset], trained_results_dataset: 
 
     signature = infer_signature(input_example, predictions)
 
-    model.save(f"{MODELS_DIR}/model.keras")
+    model.save(f"{output_model_keras}")
 
     spec = (tf.TensorSpec((None, len(X.columns)), tf.float32, name="input"),)
 
@@ -89,7 +89,7 @@ def train_model(input_results_dataset: Input[Dataset], trained_results_dataset: 
     def model_fn(x):
         return model(x)
 
-    onnx_path = f"{MODELS_DIR}/model/cs-go-match-predictor/1/model.onnx"
+    onnx_path = f"{output_model_onnx}"
 
     tf2onnx.convert.from_function(
         model_fn,
@@ -110,5 +110,5 @@ def train_model(input_results_dataset: Input[Dataset], trained_results_dataset: 
 
     val_ds = pd.concat([X_val_df, y_val_df], axis=1)
 
-    train_ds.to_csv(f"{trained_results_dataset.path}/train/train.csv", index=False)
-    val_ds.to_csv(f"{trained_results_dataset.path}/train/val.csv", index=False)
+    train_ds.to_csv(f"{trained_results_dataset.path}", index=False)
+    val_ds.to_csv(f"{val_results_dataset.path}", index=False)

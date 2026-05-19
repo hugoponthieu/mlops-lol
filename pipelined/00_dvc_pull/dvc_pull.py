@@ -17,5 +17,5 @@ def dvc_pull(results_dataset: Output[Dataset]):
     with repo.open(results_dataset.path) as f:
         df = pd.read_csv(f)
 
-    df.to_csv(f"{results_dataset.path}/raw/results.csv")
+    df.to_csv(f"{results_dataset.path}")
 
