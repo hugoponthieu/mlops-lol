@@ -4,10 +4,10 @@ from kfp.dsl import component, Input, Output, Dataset, Model
     base_image="python:3.14",
     packages_to_install=["pandas==3.01", "numpy", "tensorflow", "tf2onnx", "onnx", "keras", "mlflow.models", "sklearn.model_selection"],
 )
-def train_model(input_preprocessed_dataset: Input[Dataset], val_results_dataset: Output[Dataset], trained_results_dataset: Output[Dataset], output_model_keras: Output[Model], output_model_onnx: Output[Model]):
+def train_model(input_preprocessed_train_dataset: Input[Dataset], val_results_dataset: Output[Dataset], trained_results_dataset: Output[Dataset], output_model_keras: Output[Model], output_model_onnx: Output[Model]):
     import pandas as pd
 
-    df = pd.read_csv(f"{input_preprocessed_dataset.path}")
+    df = pd.read_csv(f"{input_preprocessed_train_dataset.path}")
 
     target = "team_1_wins"
 
