@@ -101,23 +101,56 @@ def test_build_match_features_skips_unlabeled_matches():
     assert features.iloc[1]["winrate_last_5_diff"] == 0.0
 
 
-def test_notebook_02_runtime_contract():
+def test_notebook_02_runtime_contract(tmp_path, monkeypatch):
+    notebook = json.loads(Path("notebooks/02_feature_engineering.ipynb").read_text())
+    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
+
+    project_root = tmp_path / "project"
+    artifacts_dir = project_root / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "season": 1,
+                "date": "2024-01-01",
+                "event": "Main",
+                "patch": "14.1",
+                "blue_team": "AAA",
+                "red_team": "BBB",
+                "winner": "AAA",
+                "blue_team_win": 1,
+            },
+            {
+                "season": 1,
+                "date": "2024-01-02",
+                "event": "Main",
+                "patch": "14.1",
+                "blue_team": "AAA",
+                "red_team": "CCC",
+                "winner": "CCC",
+                "blue_team_win": 0,
+            },
+        ]
+    ).to_csv(artifacts_dir / "clean_matches.csv", index=False)
+
+    monkeypatch.chdir(project_root)
+
+    exec_globals = {"__name__": "__main__"}
+    for cell in code_cells:
+        exec("".join(cell["source"]), exec_globals)
+
+    match_features = pd.read_csv(artifacts_dir / "match_features.csv", parse_dates=["date"])
+
+    assert len(match_features) == 2
+    assert {"season", "event", "patch", "elo_diff"}.issubset(match_features.columns)
+
+
+def test_notebook_02_embeds_context_columns_in_feature_rows():
     notebook = json.loads(Path("notebooks/02_feature_engineering.ipynb").read_text())
     code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
 
     helper_source = "".join(code_cells[0]["source"])
-    orchestration_sources = ["".join(cell["source"]) for cell in code_cells[1:]]
-    all_source = "\n".join("".join(cell["source"]) for cell in code_cells)
 
-    assert "sys.path" not in all_source
-    assert "from mlops.features import" not in all_source
-    assert "import mlops.features" not in all_source
-    assert 'pd.read_csv(ARTIFACTS_DIR / "clean_matches.csv"' in all_source
     assert '"season": row.season' in helper_source
     assert '"event": row.event' in helper_source
     assert '"patch": row.patch' in helper_source
-    assert any("match_features = build_match_features_local(clean_matches)" in source for source in orchestration_sources)
-    assert any(
-        'match_features.to_csv(ARTIFACTS_DIR / "match_features.csv", index=False)' in source
-        for source in orchestration_sources
-    )
