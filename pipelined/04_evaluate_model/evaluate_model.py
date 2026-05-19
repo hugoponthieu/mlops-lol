@@ -4,13 +4,13 @@ from kfp.dsl import component, Input, Output, Dataset, Model
     base_image="python:3.14",
     packages_to_install=["pandas==3.01", "numpy", "keras.model", "joblib", "sklearn.metrics"],
 )
-def evaluate_model(input_preprocessed_dataset: Input[Dataset], input_raw_dataset: Input[Dataset], input_trained_dataset: Input[Dataset], input_keras_model: Input[Model], input_preprocessing_joblib: Input[Model]):
+def evaluate_model(input_raw_dataset: Input[Dataset], input_trained_dataset: Input[Dataset], input_keras_model: Input[Model], input_preprocessing_joblib: Input[Model]):
     import pandas as pd
 
     df = pd.read_csv(f"{input_raw_dataset.path}")
     df["date"] = pd.to_datetime(df["date"])
 
-    df_test = pd.read_csv(f"{input_preprocessed_dataset.path}")
+    df_test = pd.read_csv(f"{input_trained_dataset.path}")
 
     from keras.models import load_model
 
