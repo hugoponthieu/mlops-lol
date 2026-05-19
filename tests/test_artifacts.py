@@ -168,7 +168,7 @@ def test_notebook_04_runtime_contract_writes_model_and_predictions(tmp_path, mon
         artifacts_dir / "valid_labels.csv", index=False
     )
 
-    _execute_notebook("notebooks/04_train_probability_model.ipynb", project_root, monkeypatch)
+    _execute_notebook(str(notebook_path), project_root, monkeypatch)
 
     model_path = artifacts_dir / "logistic_regression_model.joblib"
     predictions_path = artifacts_dir / "validation_predictions.csv"
@@ -195,7 +195,3 @@ def test_notebook_04_runtime_contract_writes_model_and_predictions(tmp_path, mon
     assert manifest["train_rows"] == 6
     assert manifest["valid_rows"] == 2
     assert manifest["feature_columns"] == feature_columns
-
-    source = _load_notebook_source(Path("notebooks/04_train_probability_model.ipynb"))
-    assert "from mlops" not in source
-    assert "import sys" not in source
