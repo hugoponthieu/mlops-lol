@@ -1,0 +1,4 @@
+[console_scripts]
+compile = main:compile
+run = main:run
+upload = main:upload

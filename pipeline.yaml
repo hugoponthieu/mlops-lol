@@ -1,0 +1,399 @@
+# PIPELINE DEFINITION
+# Name: cs-go-match-predictor-train
+components:
+  comp-feature-engineering:
+    executorLabel: exec-feature-engineering
+    inputDefinitions:
+      artifacts:
+        matches_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        features_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-feature-preprocessing:
+    executorLabel: exec-feature-preprocessing
+    inputDefinitions:
+      artifacts:
+        features_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        preprocessing_joblib:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        test_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        train_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-feature-train-model:
+    executorLabel: exec-feature-train-model
+    inputDefinitions:
+      artifacts:
+        train_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model_path:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        train_ds:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        val_ds:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-pull-data:
+    executorLabel: exec-pull-data
+    outputDefinitions:
+      artifacts:
+        matches_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-feature-engineering:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - feature_engineering
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==3.0.2'\
+          \ 'numpy==2.4.4'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef build_feature_state(df, base_elo=1500):\n    \"\"\"Build initial\
+          \ state from historical matches\"\"\"\n    import pandas as pd  # type:\
+          \ ignore\n\n    state = {\n        \"elo\": {},\n        \"matches_played\"\
+          : {},\n        \"win_history\": {},\n        \"h2h\": {},\n    }\n    #\
+          \ Initialize Elo\n    teams = pd.concat([df[\"team_1\"], df[\"team_2\"]]).unique()\n\
+          \    for team in teams:\n        state[\"elo\"][team] = base_elo\n     \
+          \   state[\"matches_played\"][team] = 0\n        state[\"win_history\"][team]\
+          \ = []\n    return state\n\n\ndef compute_features_for_match(match, state):\n\
+          \    \"\"\"Compute feature vector for a single match\"\"\"\n    import numpy\
+          \ as np  # type: ignore\n\n    team = match[\"team_1\"]\n    opp = match[\"\
+          team_2\"]\n\n    # Elo diff\n    elo_team = state[\"elo\"].get(team, 1500)\n\
+          \    elo_opp = state[\"elo\"].get(opp, 1500)\n    elo_diff = elo_team -\
+          \ elo_opp\n\n    # Rolling winrates\n    winrate_10 = (\n        np.mean(state[\"\
+          win_history\"].get(team, [])[-10:])\n        if len(state[\"win_history\"\
+          ].get(team, [])) > 0\n        else 0\n    )\n    winrate_30 = (\n      \
+          \  np.mean(state[\"win_history\"].get(team, [])[-30:])\n        if len(state[\"\
+          win_history\"].get(team, [])) > 0\n        else 0\n    )\n    winrate_10_diff\
+          \ = winrate_10 - (\n        np.mean(state[\"win_history\"].get(opp, [])[-10:])\n\
+          \        if len(state[\"win_history\"].get(opp, [])) > 0\n        else 0\n\
+          \    )\n    winrate_30_diff = winrate_30 - (\n        np.mean(state[\"win_history\"\
+          ].get(opp, [])[-30:])\n        if len(state[\"win_history\"].get(opp, []))\
+          \ > 0\n        else 0\n    )\n\n    # Experience / matches played\n    experience_diff\
+          \ = state[\"matches_played\"].get(team, 0) - state[\n        \"matches_played\"\
+          \n    ].get(opp, 0)\n\n    # Rank diff\n    rank_diff = match[\"rank_1\"\
+          ] - match[\"rank_2\"]\n\n    # H2H winrate\n    h2h_key = (team, opp)\n\
+          \    h2h_list = state[\"h2h\"].get(h2h_key, [])\n    h2h_winrate = np.mean(h2h_list)\
+          \ if len(h2h_list) > 0 else 0.5\n\n    return {\n        \"elo_diff\": elo_diff,\n\
+          \        \"winrate_10_diff\": winrate_10_diff,\n        \"winrate_30_diff\"\
+          : winrate_30_diff,\n        \"experience_diff\": experience_diff,\n    \
+          \    \"rank_diff\": rank_diff,\n        \"h2h_winrate\": h2h_winrate,\n\
+          \    }\n\n\ndef update_state_with_result(match, state, k=32):\n    \"\"\"\
+          Update Elo, rolling winrates, H2H after a match\"\"\"\n    team = match[\"\
+          team_1\"]\n    opp = match[\"team_2\"]\n    result = int(match[\"match_winner\"\
+          ] == 1)\n\n    # Update Elo\n    r_team = state[\"elo\"].get(team, 1500)\n\
+          \    r_opp = state[\"elo\"].get(opp, 1500)\n    exp = 1 / (1 + 10 ** ((r_opp\
+          \ - r_team) / 400))\n    state[\"elo\"][team] = r_team + k * (result - exp)\n\
+          \    state[\"elo\"][opp] = r_opp + k * ((1 - result) - (1 - exp))\n\n  \
+          \  # Update win history\n    state[\"win_history\"].setdefault(team, []).append(result)\n\
+          \    state[\"win_history\"].setdefault(opp, []).append(1 - result)\n\n \
+          \   # Update matches played\n    state[\"matches_played\"][team] = state[\"\
+          matches_played\"].get(team, 0) + 1\n    state[\"matches_played\"][opp] =\
+          \ state[\"matches_played\"].get(opp, 0) + 1\n\n    # Update H2H\n    h2h_key\
+          \ = (team, opp)\n    state[\"h2h\"].setdefault(h2h_key, []).append(result)\n\
+          \    return state\n\n\ndef feature_engineering(\n    matches_csv: Input[Dataset],\n\
+          \    features_csv: Output[Dataset],\n):\n    import pandas as pd  # type:\
+          \ ignore\n\n    matches = pd.read_csv(matches_csv.path)\n    matches[\"\
+          date\"] = pd.to_datetime(matches[\"date\"])\n    matches = matches.sort_values(\"\
+          date\").reset_index(drop=True)\n\n    # Build initial state\n    state =\
+          \ build_feature_state(matches)\n    X = []\n    y = []\n\n    # Compute\
+          \ features for each match\n    for _, match in matches.iterrows():\n   \
+          \     features = compute_features_for_match(match, state)\n        X.append(features)\n\
+          \        y.append(int(match[\"match_winner\"] == 1))\n        state = update_state_with_result(match,\
+          \ state)\n\n    df_featured = pd.concat([matches, pd.DataFrame(X), pd.Series(y,\
+          \ name=\"team_1_wins\")], axis=1)\n\n    df_featured.to_csv(features_csv.path,\
+          \ index=False)\n\n"
+        image: python:3.14
+    exec-feature-preprocessing:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - feature_preprocessing
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==3.0.2'\
+          \ 'scikit-learn==1.8.0' 'joblib==1.5.3' 'pygments==2.20.0'  &&  python3\
+          \ -m pip install --quiet --no-warn-script-location 'kfp==2.16.1' '--no-deps'\
+          \ 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\
+          \n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef feature_preprocessing(\n    features_csv: Input[Dataset],\n \
+          \   train_csv: Output[Dataset],\n    test_csv: Output[Dataset],\n    preprocessing_joblib:\
+          \ Output[Dataset],\n):\n    import pandas as pd\n\n    df = pd.read_csv(features_csv.path)\n\
+          \    df[\"date\"] = pd.to_datetime(df[\"date\"])\n\n    split_date = df[\"\
+          date\"].quantile(0.9)\n    df_train = df[df[\"date\"] <= split_date].copy()\n\
+          \    df_test = df[df[\"date\"] > split_date].copy().reset_index()\n\n  \
+          \  features = [\n        \"elo_diff\",\n        \"winrate_10_diff\",\n \
+          \       \"winrate_30_diff\",\n        \"experience_diff\",\n        \"rank_diff\"\
+          ,\n        \"h2h_winrate\",\n    ]\n    target = \"team_1_wins\"\n\n   \
+          \ X_train = df_train[features]\n    y_train = df_train[target]\n    X_test\
+          \ = df_test[features]\n    y_test = df_test[target]\n\n    from sklearn.pipeline\
+          \ import Pipeline\n    from sklearn.impute import SimpleImputer\n    from\
+          \ sklearn.preprocessing import StandardScaler\n    from sklearn.compose\
+          \ import ColumnTransformer\n\n    numeric_pipeline = Pipeline(\n       \
+          \ [(\"imputer\", SimpleImputer(strategy=\"median\")), (\"scaler\", StandardScaler())]\n\
+          \    )\n    preprocessor = ColumnTransformer([(\"num\", numeric_pipeline,\
+          \ features)])\n\n    X_train_scaled = pd.DataFrame(preprocessor.fit_transform(X_train),\
+          \ columns=features)  # type: ignore\n    X_test_scaled = pd.DataFrame(preprocessor.transform(X_test),\
+          \ columns=features)  # type: ignore\n\n    df_train_preprocessed = pd.concat([X_train_scaled,\
+          \ y_train], axis=1)\n    df_test_preprocessed = pd.concat([X_test_scaled,\
+          \ y_test], axis=1)\n\n    import joblib\n\n    # Save datasets\n    df_train_preprocessed.to_csv(train_csv.path,\
+          \ index=False)\n    df_test_preprocessed.to_csv(test_csv.path, index=False)\n\
+          \n    # Save preprocessor model\n    joblib.dump(preprocessor, preprocessing_joblib.path)\n\
+          \n"
+        image: python:3.14
+    exec-feature-train-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - feature_train_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.3.3'\
+          \ 'mlflow==3.12.0' 'tensorflow==2.21.0' 'tensorboard==2.20.0' 'matplotlib==3.10.9'\
+          \ 'tf2onnx==1.17.0' 'scikit-learn==1.8.0' 'python-dotenv==1.2.2' 'numpy==2.4.4'\
+          \ 'onnx==1.21.0' 'onnxruntime==1.26.0' 'uv==0.11.12' 'boto3==1.43.6' 'gitpython==3.1.50'\
+          \ 'mako==1.3.12' 'pillow==12.2.0' 'aiohttp==3.13.5' 'requests==2.33.1' 'pip==26.1.1'\
+          \ 'pygments==2.20.0'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef feature_train_model(\n    train_csv: Input[Dataset],\n    train_ds:\
+          \ Output[Dataset],\n    val_ds: Output[Dataset],\n    model_path: Output[Dataset],\n\
+          ):\n    import pandas as pd\n\n    df = pd.read_csv(train_csv.path)\n\n\
+          \    target = \"team_1_wins\"\n    X = df.drop(target, axis=1)\n    y =\
+          \ df[target]\n\n    import numpy as np\n    import tensorflow as tf\n  \
+          \  import tf2onnx\n    import onnx\n    from keras import callbacks, layers,\
+          \ metrics, models, optimizers\n    from mlflow.models import infer_signature\n\
+          \    from sklearn.model_selection import train_test_split\n\n    learning_rate\
+          \ = 0.01\n    dense_1_units = 64\n    dense_2_units = 16\n    dropout =\
+          \ 0.3\n    batch_size = 128\n    epoch = 100\n    validation_split = 0.2\n\
+          \    patience = 10\n\n    model = models.Sequential(\n        [\n      \
+          \      layers.Input(shape=(X.shape[1],)),\n            layers.Dense(dense_1_units,\
+          \ activation=\"relu\"),\n            layers.Dropout(dropout),\n        \
+          \    layers.BatchNormalization(),\n            layers.Dense(dense_2_units,\
+          \ activation=\"relu\"),\n            layers.Dropout(dropout),\n        \
+          \    layers.BatchNormalization(),\n            layers.Dense(1, activation=\"\
+          sigmoid\"),\n        ]\n    )\n\n    model.compile(\n        optimizer=optimizers.Adam(learning_rate=learning_rate),\n\
+          \        loss=\"binary_crossentropy\",\n        metrics=[\"accuracy\", metrics.AUC(name=\"\
+          auc\")],\n    )\n\n    # Save KFP output paths before variable names are\
+          \ reused below\n    train_ds_path = train_ds.path\n    val_ds_path = val_ds.path\n\
+          \    keras_path = model_path.path + \".keras\"\n    onnx_path = model_path.path\
+          \ + \".onnx\"\n\n    X_train, X_val, y_train, y_val = train_test_split(\n\
+          \        X, y, test_size=validation_split, random_state=42\n    )\n\n  \
+          \  tf_train_ds = tf.data.Dataset.from_tensor_slices((X_train.values, y_train.values))\n\
+          \    tf_val_ds = tf.data.Dataset.from_tensor_slices((X_val.values, y_val.values))\n\
+          \n    tf_train_ds = tf_train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)\n\
+          \    tf_val_ds = tf_val_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)\n\
+          \n    model.fit(\n        tf_train_ds,\n        validation_data=tf_val_ds,\n\
+          \        epochs=epoch,\n        callbacks=[callbacks.EarlyStopping(patience=patience,\
+          \ restore_best_weights=True)],\n    )\n\n    model.save(keras_path)\n\n\
+          \    spec = (tf.TensorSpec((None, len(X.columns)), tf.float32, name=\"input\"\
+          ),)\n\n    @tf.function(input_signature=spec)\n    def model_fn(x):\n  \
+          \      return model(x)\n\n    tf2onnx.convert.from_function(\n        model_fn,\n\
+          \        opset=17,\n        output_path=onnx_path,\n        input_signature=spec,\n\
+          \    )\n\n    train_df = pd.concat([pd.DataFrame(X_train), pd.Series(y_train,\
+          \ name=\"team_1_wins\")], axis=1)\n    val_df = pd.concat([pd.DataFrame(X_val),\
+          \ pd.Series(y_val, name=\"team_1_wins\")], axis=1)\n\n    train_df.to_csv(train_ds_path,\
+          \ index=False)\n    val_df.to_csv(val_ds_path, index=False)\n\n"
+        image: python:3.12
+    exec-pull-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - pull_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==3.0.2'\
+          \ 'dvc[s3]==3.67.1' 'python-dotenv==1.2.2' 'gitpython==3.1.50' 'aiohttp==3.13.5'\
+          \ 'cryptography==48.0.0' 'pygments==2.20.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef pull_data(\n    matches_csv: Output[Dataset],\n):\n    from dvc.api\
+          \ import DVCFileSystem\n    import os\n    import pandas as pd\n\n    repo\
+          \ = DVCFileSystem(\n        os.environ[\"DVC_GIT_REPO\"],\n        remote=\"\
+          s3-storage\",\n        remote_config={\n            \"access_key_id\": os.environ[\"\
+          DVC_S3_ACCESS_KEY\"],\n            \"secret_access_key\": os.environ[\"\
+          DVC_S3_SECRET_KEY\"],\n        },\n    )\n\n    with repo.open(\"data/raw/dataset.csv\"\
+          ) as f:\n        df = pd.read_csv(f)\n\n    df.to_csv(matches_csv.path)\n\
+          \n"
+        image: python:3.14
+pipelineInfo:
+  name: cs-go-match-predictor-train
+root:
+  dag:
+    tasks:
+      feature-engineering:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-feature-engineering
+        dependentTasks:
+        - pull-data
+        inputs:
+          artifacts:
+            matches_csv:
+              taskOutputArtifact:
+                outputArtifactKey: matches_csv
+                producerTask: pull-data
+        taskInfo:
+          name: feature-engineering
+      feature-preprocessing:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-feature-preprocessing
+        dependentTasks:
+        - feature-engineering
+        inputs:
+          artifacts:
+            features_csv:
+              taskOutputArtifact:
+                outputArtifactKey: features_csv
+                producerTask: feature-engineering
+        taskInfo:
+          name: feature-preprocessing
+      feature-train-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-feature-train-model
+        dependentTasks:
+        - feature-preprocessing
+        inputs:
+          artifacts:
+            train_csv:
+              taskOutputArtifact:
+                outputArtifactKey: train_csv
+                producerTask: feature-preprocessing
+        taskInfo:
+          name: feature-train-model
+      pull-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-pull-data
+        taskInfo:
+          name: pull-data
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.1
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-pull-data:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: DVC_GIT_REPO
+              secretKey: DVC_GIT_REPO
+            - envVar: DVC_S3_ACCESS_KEY
+              secretKey: DVC_S3_ACCESS_KEY
+            - envVar: DVC_S3_SECRET_KEY
+              secretKey: DVC_S3_SECRET_KEY
+            optional: false
+            secretName: dvc-credentials
+            secretNameParameter:
+              runtimeValue:
+                constant: dvc-credentials
+          secretAsVolume:
+          - mountPath: /root/.ssh
+            optional: false
+            secretName: dvc-ssh-key
+            secretNameParameter:
+              runtimeValue:
+                constant: dvc-ssh-key

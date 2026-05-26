@@ -1,0 +1,5 @@
+[core]
+    remote = s3-storage
+['remote "s3-storage"']
+    url = s3://mlops-bif
+    endpointurl = https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com/mlops-bif

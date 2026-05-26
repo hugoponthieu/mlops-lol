@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: cs-go-match-predictor
+Version: 0.1.0
+Requires-Python: >=3.14
+Requires-Dist: kfp[kubernetes]==2.16.1
+Requires-Dist: requests==2.33.1
+Requires-Dist: python-dotenv==1.2.2
+Requires-Dist: urllib3==2.7.0
+Requires-Dist: gitpython==3.1.50
+Requires-Dist: aiohttp==3.13.5
+Requires-Dist: cryptography==48.0.0
+Requires-Dist: gitpython==3.1.50
+Requires-Dist: pygments==2.20.0
+Provides-Extra: dev
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: types-requests; extra == "dev"
+Requires-Dist: dvc[s3]; extra == "dev"

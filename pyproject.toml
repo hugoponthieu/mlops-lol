@@ -1,0 +1,24 @@
+[project]
+name = "cs-go-match-predictor"
+version = "0.1.0"
+requires-python = ">= 3.14"
+
+dependencies = [
+    "kfp[kubernetes]==2.16.1",
+    "requests==2.33.1",
+    "python-dotenv==1.2.2",
+    "urllib3==2.7.0",
+    "gitpython==3.1.50", # CVE-2026-42215, 42284, 44243, 44244, GHSA-mv93-w799-cj2w
+    "aiohttp==3.13.5", # CVE-2026-22815, 34515, 34516, 43525
+    "cryptography==48.0.0", # CVE-2026-39892
+    "gitpython==3.1.50", # CVE-2026-42215, 42284, 44243, 44244, GHSA-mv93-w799-cj2w
+    "pygments==2.20.0" # CVE-2026-4539
+]
+
+[project.scripts]
+compile = "main:compile"
+upload = "main:upload"
+run = "main:run"
+
+[project.optional-dependencies]
+dev = ["mypy", "ruff", "types-requests", "dvc[s3]"]
