@@ -1,35 +1,33 @@
 from kfp import dsl
-from kfp.dsl import Dataset, Input, Output
+from kfp.dsl import Dataset, Output
 
 @dsl.component(
     packages_to_install=[
-        "pandas==3.0.2",
-        "dvc[s3]==3.67.1",
-        "python-dotenv==1.2.2",
-        "gitpython==3.1.50", # CVE-2026-42215, 42284, 44243, 44244, GHSA-mv93-w799-cj2w
-        "aiohttp==3.13.5", # CVE-2026-22815, 34515, 34516, 34525
-        "cryptography==48.0.0", # CVE-2026-39892
+        "pandas==2.3.3",
+        "boto3==1.43.6",
+        "requests==2.33.1", # CVE-2026-25645
+        "urllib3==2.7.0",
         "pygments==2.20.0" # CVE-2026-4539
     ],
-    base_image="python:3.14",
+    base_image="python:3.12",
 )
 def pull_data(
     matches_csv: Output[Dataset],
+    s3_bucket: str = "mlops-bif",
+    s3_key: str = "data/raw/dataset.csv",
+    s3_endpoint: str = "https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com",
+    s3_region: str = "auto",
 ):
-    from dvc.api import DVCFileSystem
     import os
-    import pandas as pd
 
-    repo = DVCFileSystem(
-        os.environ["DVC_GIT_REPO"],
-        remote="s3-storage",
-        remote_config={
-            "access_key_id": os.environ["DVC_S3_ACCESS_KEY"],
-            "secret_access_key": os.environ["DVC_S3_SECRET_KEY"],
-        },
+    import boto3
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=s3_endpoint,
+        aws_access_key_id=os.environ["DVC_S3_ACCESS_KEY"],
+        aws_secret_access_key=os.environ["DVC_S3_SECRET_KEY"],
+        region_name=s3_region,
     )
-
-    with repo.open("data/raw/dataset.csv") as f:
-        df = pd.read_csv(f)
-
-    df.to_csv(matches_csv.path)
+    s3.download_file(s3_bucket, s3_key, matches_csv.path)
+    print(f"Downloaded s3://{s3_bucket}/{s3_key} to {matches_csv.path}")

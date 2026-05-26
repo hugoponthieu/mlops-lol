@@ -1,5 +1,5 @@
 from kfp import dsl
-from kfp.dsl import Dataset, Input, Output
+from kfp.dsl import Dataset, Input, Model, Output
 
 def build_feature_state(df, base_elo=1500):
     """Build initial state from historical matches"""
@@ -137,9 +137,10 @@ def match_to_features(preprocessor, history_df, match):
 def feature_evaluate_model(
     matches_csv: Input[Dataset],
     preprocessed_test_csv: Input[Dataset],
-    model_path: Input[Dataset],
+    model: Input[Model],
     preprocessor_path: Input[Dataset],
 ):
+    import os
     import pandas as pd
 
     df = pd.read_csv(matches_csv.path)
@@ -148,7 +149,8 @@ def feature_evaluate_model(
     df_test = pd.read_csv(preprocessed_test_csv.path)
 
     from keras.models import load_model
-    model = load_model(model_path.path)
+    keras_file = model.metadata.get("keras_file", "model.keras")
+    nn = load_model(os.path.join(model.path, keras_file))
 
     import joblib
     preprocessor = joblib.load(preprocessor_path.path)
@@ -159,7 +161,7 @@ def feature_evaluate_model(
     X_test = df_test.drop(target, axis=1)
     y_test = df_test[target]
 
-    y_proba = model.predict(X_test).ravel()  # type: ignore
+    y_proba = nn.predict(X_test).ravel()  # type: ignore
     y_pred = (y_proba >= 0.5).astype(int)
 
     df_test_predicted = pd.concat([df_test, pd.Series(y_pred, name="prediction")], axis=1)
@@ -174,7 +176,7 @@ def feature_evaluate_model(
     }
 
     X = match_to_features(preprocessor, df, future_match)
-    p = model.predict(X)[0][0]  # type: ignore
+    p = nn.predict(X)[0][0]  # type: ignore
 
     print(f"{future_match['team_1']} win probability: {p:.2%}")
     print(

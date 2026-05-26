@@ -1,5 +1,21 @@
 # PIPELINE DEFINITION
 # Name: cs-go-match-predictor-train
+# Inputs:
+#    batch_size: int [Default: 128.0]
+#    dense_1_units: int [Default: 64.0]
+#    dense_2_units: int [Default: 16.0]
+#    dropout: float [Default: 0.3]
+#    epochs: int [Default: 100.0]
+#    learning_rate: float [Default: 0.001]
+#    num_nodes: int [Default: 1.0]
+#    patience: int [Default: 10.0]
+#    runtime_name: str [Default: 'torch-distributed']
+#    s3_bucket: str [Default: 'mlops-bif']
+#    s3_dataset_key: str [Default: 'data/raw/dataset.csv']
+#    s3_endpoint: str [Default: 'https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com']
+#    s3_prefix: str [Default: 'kfp-runs']
+#    s3_region: str [Default: 'auto']
+#    validation_split: float [Default: 0.2]
 components:
   comp-feature-engineering:
     executorLabel: exec-feature-engineering
@@ -41,26 +57,97 @@ components:
     executorLabel: exec-feature-train-model
     inputDefinitions:
       artifacts:
+        test_csv:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
         train_csv:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
+      parameters:
+        batch_size:
+          defaultValue: 128.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        dense_1_units:
+          defaultValue: 64.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        dense_2_units:
+          defaultValue: 16.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        dropout:
+          defaultValue: 0.3
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        epochs:
+          defaultValue: 100.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        learning_rate:
+          defaultValue: 0.001
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        num_nodes:
+          defaultValue: 1.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        patience:
+          defaultValue: 10.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        runtime_name:
+          defaultValue: torch-distributed
+          isOptional: true
+          parameterType: STRING
+        s3_bucket:
+          defaultValue: mlops-bif
+          isOptional: true
+          parameterType: STRING
+        s3_endpoint:
+          defaultValue: https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com
+          isOptional: true
+          parameterType: STRING
+        s3_prefix:
+          defaultValue: kfp-runs
+          isOptional: true
+          parameterType: STRING
+        s3_region:
+          defaultValue: auto
+          isOptional: true
+          parameterType: STRING
+        validation_split:
+          defaultValue: 0.2
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
     outputDefinitions:
       artifacts:
-        model_path:
+        model:
           artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
-        train_ds:
-          artifactType:
-            schemaTitle: system.Dataset
-            schemaVersion: 0.0.1
-        val_ds:
-          artifactType:
-            schemaTitle: system.Dataset
+            schemaTitle: system.Model
             schemaVersion: 0.0.1
   comp-pull-data:
     executorLabel: exec-pull-data
+    inputDefinitions:
+      parameters:
+        s3_bucket:
+          defaultValue: mlops-bif
+          isOptional: true
+          parameterType: STRING
+        s3_endpoint:
+          defaultValue: https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com
+          isOptional: true
+          parameterType: STRING
+        s3_key:
+          defaultValue: data/raw/dataset.csv
+          isOptional: true
+          parameterType: STRING
+        s3_region:
+          defaultValue: auto
+          isOptional: true
+          parameterType: STRING
     outputDefinitions:
       artifacts:
         matches_csv:
@@ -217,14 +304,11 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.3.3'\
-          \ 'mlflow==3.12.0' 'tensorflow==2.21.0' 'tensorboard==2.20.0' 'matplotlib==3.10.9'\
-          \ 'tf2onnx==1.17.0' 'scikit-learn==1.8.0' 'python-dotenv==1.2.2' 'numpy==2.4.4'\
-          \ 'onnx==1.21.0' 'onnxruntime==1.26.0' 'uv==0.11.12' 'boto3==1.43.6' 'gitpython==3.1.50'\
-          \ 'mako==1.3.12' 'pillow==12.2.0' 'aiohttp==3.13.5' 'requests==2.33.1' 'pip==26.1.1'\
-          \ 'pygments==2.20.0'  &&  python3 -m pip install --quiet --no-warn-script-location\
-          \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
-          3.9\"' && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubeflow==0.4.0'\
+          \ 'boto3==1.43.6' 'pandas==2.3.3' 'requests==2.33.1' 'urllib3==2.7.0' 'pygments==2.20.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -236,44 +320,145 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef feature_train_model(\n    train_csv: Input[Dataset],\n    train_ds:\
-          \ Output[Dataset],\n    val_ds: Output[Dataset],\n    model_path: Output[Dataset],\n\
-          ):\n    import pandas as pd\n\n    df = pd.read_csv(train_csv.path)\n\n\
-          \    target = \"team_1_wins\"\n    X = df.drop(target, axis=1)\n    y =\
-          \ df[target]\n\n    import numpy as np\n    import tensorflow as tf\n  \
-          \  import tf2onnx\n    import onnx\n    from keras import callbacks, layers,\
-          \ metrics, models, optimizers\n    from mlflow.models import infer_signature\n\
-          \    from sklearn.model_selection import train_test_split\n\n    learning_rate\
-          \ = 0.01\n    dense_1_units = 64\n    dense_2_units = 16\n    dropout =\
-          \ 0.3\n    batch_size = 128\n    epoch = 100\n    validation_split = 0.2\n\
-          \    patience = 10\n\n    model = models.Sequential(\n        [\n      \
-          \      layers.Input(shape=(X.shape[1],)),\n            layers.Dense(dense_1_units,\
-          \ activation=\"relu\"),\n            layers.Dropout(dropout),\n        \
-          \    layers.BatchNormalization(),\n            layers.Dense(dense_2_units,\
-          \ activation=\"relu\"),\n            layers.Dropout(dropout),\n        \
-          \    layers.BatchNormalization(),\n            layers.Dense(1, activation=\"\
-          sigmoid\"),\n        ]\n    )\n\n    model.compile(\n        optimizer=optimizers.Adam(learning_rate=learning_rate),\n\
-          \        loss=\"binary_crossentropy\",\n        metrics=[\"accuracy\", metrics.AUC(name=\"\
-          auc\")],\n    )\n\n    # Save KFP output paths before variable names are\
-          \ reused below\n    train_ds_path = train_ds.path\n    val_ds_path = val_ds.path\n\
-          \    keras_path = model_path.path + \".keras\"\n    onnx_path = model_path.path\
-          \ + \".onnx\"\n\n    X_train, X_val, y_train, y_val = train_test_split(\n\
-          \        X, y, test_size=validation_split, random_state=42\n    )\n\n  \
-          \  tf_train_ds = tf.data.Dataset.from_tensor_slices((X_train.values, y_train.values))\n\
-          \    tf_val_ds = tf.data.Dataset.from_tensor_slices((X_val.values, y_val.values))\n\
-          \n    tf_train_ds = tf_train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)\n\
-          \    tf_val_ds = tf_val_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)\n\
-          \n    model.fit(\n        tf_train_ds,\n        validation_data=tf_val_ds,\n\
-          \        epochs=epoch,\n        callbacks=[callbacks.EarlyStopping(patience=patience,\
-          \ restore_best_weights=True)],\n    )\n\n    model.save(keras_path)\n\n\
-          \    spec = (tf.TensorSpec((None, len(X.columns)), tf.float32, name=\"input\"\
-          ),)\n\n    @tf.function(input_signature=spec)\n    def model_fn(x):\n  \
-          \      return model(x)\n\n    tf2onnx.convert.from_function(\n        model_fn,\n\
-          \        opset=17,\n        output_path=onnx_path,\n        input_signature=spec,\n\
-          \    )\n\n    train_df = pd.concat([pd.DataFrame(X_train), pd.Series(y_train,\
-          \ name=\"team_1_wins\")], axis=1)\n    val_df = pd.concat([pd.DataFrame(X_val),\
-          \ pd.Series(y_val, name=\"team_1_wins\")], axis=1)\n\n    train_df.to_csv(train_ds_path,\
-          \ index=False)\n    val_df.to_csv(val_ds_path, index=False)\n\n"
+          \ *\n\ndef feature_train_model(\n    train_csv: Input[Dataset],\n    test_csv:\
+          \ Input[Dataset],\n    model: Output[Model],\n    s3_bucket: str = \"mlops-bif\"\
+          ,\n    s3_endpoint: str = \"https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com\"\
+          ,\n    s3_region: str = \"auto\",\n    s3_prefix: str = \"kfp-runs\",\n\
+          \    runtime_name: str = \"torch-distributed\",\n    num_nodes: int = 1,\n\
+          \    learning_rate: float = 0.001,\n    dense_1_units: int = 64,\n    dense_2_units:\
+          \ int = 16,\n    dropout: float = 0.3,\n    batch_size: int = 128,\n   \
+          \ epochs: int = 100,\n    patience: int = 10,\n    validation_split: float\
+          \ = 0.2,\n):\n    import json\n    import os\n    import time\n    import\
+          \ uuid\n\n    import boto3\n    from kubeflow.trainer import (\n       \
+          \ CustomTrainer,\n        Initializer,\n        S3DatasetInitializer,\n\
+          \        TrainerClient,\n    )\n\n    access_key = os.environ[\"DVC_S3_ACCESS_KEY\"\
+          ]\n    secret_key = os.environ[\"DVC_S3_SECRET_KEY\"]\n\n    run_id = uuid.uuid4().hex[:10]\n\
+          \    data_prefix = f\"{s3_prefix}/{run_id}/data\"\n    model_prefix = f\"\
+          {s3_prefix}/{run_id}/model\"\n\n    s3 = boto3.client(\n        \"s3\",\n\
+          \        endpoint_url=s3_endpoint,\n        aws_access_key_id=access_key,\n\
+          \        aws_secret_access_key=secret_key,\n        region_name=s3_region,\n\
+          \    )\n    s3.upload_file(train_csv.path, s3_bucket, f\"{data_prefix}/train.csv\"\
+          )\n    s3.upload_file(test_csv.path, s3_bucket, f\"{data_prefix}/test.csv\"\
+          )\n    print(f\"Uploaded preprocessed CSVs to s3://{s3_bucket}/{data_prefix}/\"\
+          )\n\n    def train_fn(\n        learning_rate: float,\n        dense_1_units:\
+          \ int,\n        dense_2_units: int,\n        dropout: float,\n        batch_size:\
+          \ int,\n        epochs: int,\n        patience: int,\n        validation_split:\
+          \ float,\n        s3_bucket: str,\n        s3_endpoint: str,\n        s3_region:\
+          \ str,\n        model_prefix: str,\n        access_key: str,\n        secret_key:\
+          \ str,\n    ):\n        import json\n        import os\n\n        import\
+          \ boto3\n        import pandas as pd\n        import torch\n        import\
+          \ torch.nn as nn\n        from torch.utils.data import DataLoader, TensorDataset,\
+          \ random_split\n\n        target = \"team_1_wins\"\n        df = pd.read_csv(\"\
+          /workspace/dataset/train.csv\")\n        feature_columns = [c for c in df.columns\
+          \ if c != target]\n        n_features = len(feature_columns)\n\n       \
+          \ X = torch.tensor(df[feature_columns].values, dtype=torch.float32)\n  \
+          \      y = torch.tensor(df[target].values, dtype=torch.float32).unsqueeze(1)\n\
+          \        full_ds = TensorDataset(X, y)\n\n        val_size = max(1, int(len(full_ds)\
+          \ * validation_split))\n        train_size = len(full_ds) - val_size\n \
+          \       train_ds, val_ds = random_split(\n            full_ds, [train_size,\
+          \ val_size], generator=torch.Generator().manual_seed(42)\n        )\n  \
+          \      train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)\n\
+          \        val_dl = DataLoader(val_ds, batch_size=batch_size)\n\n        net\
+          \ = nn.Sequential(\n            nn.Linear(n_features, dense_1_units),\n\
+          \            nn.ReLU(),\n            nn.Dropout(dropout),\n            nn.BatchNorm1d(dense_1_units),\n\
+          \            nn.Linear(dense_1_units, dense_2_units),\n            nn.ReLU(),\n\
+          \            nn.Dropout(dropout),\n            nn.BatchNorm1d(dense_2_units),\n\
+          \            nn.Linear(dense_2_units, 1),\n        )\n        optimizer\
+          \ = torch.optim.Adam(net.parameters(), lr=learning_rate)\n        loss_fn\
+          \ = nn.BCEWithLogitsLoss()\n\n        best_val_loss = float(\"inf\")\n \
+          \       best_state = None\n        epochs_since_improve = 0\n        final_metrics\
+          \ = {}\n\n        for epoch in range(epochs):\n            net.train()\n\
+          \            train_loss_sum, train_n = 0.0, 0\n            for xb, yb in\
+          \ train_dl:\n                optimizer.zero_grad()\n                logits\
+          \ = net(xb)\n                loss = loss_fn(logits, yb)\n              \
+          \  loss.backward()\n                optimizer.step()\n                train_loss_sum\
+          \ += loss.item() * xb.size(0)\n                train_n += xb.size(0)\n \
+          \           train_loss = train_loss_sum / max(train_n, 1)\n\n          \
+          \  net.eval()\n            val_loss_sum, val_correct, val_n = 0.0, 0, 0\n\
+          \            with torch.no_grad():\n                for xb, yb in val_dl:\n\
+          \                    logits = net(xb)\n                    val_loss_sum\
+          \ += loss_fn(logits, yb).item() * xb.size(0)\n                    preds\
+          \ = (torch.sigmoid(logits) >= 0.5).float()\n                    val_correct\
+          \ += (preds == yb).sum().item()\n                    val_n += xb.size(0)\n\
+          \            val_loss = val_loss_sum / max(val_n, 1)\n            val_acc\
+          \ = val_correct / max(val_n, 1)\n            print(\n                f\"\
+          epoch {epoch+1}/{epochs} train_loss={train_loss:.4f} \"\n              \
+          \  f\"val_loss={val_loss:.4f} val_acc={val_acc:.4f}\"\n            )\n \
+          \           final_metrics = {\n                \"train_loss\": train_loss,\n\
+          \                \"val_loss\": val_loss,\n                \"val_accuracy\"\
+          : val_acc,\n            }\n\n            if val_loss < best_val_loss - 1e-6:\n\
+          \                best_val_loss = val_loss\n                best_state =\
+          \ {k: v.detach().clone() for k, v in net.state_dict().items()}\n       \
+          \         epochs_since_improve = 0\n            else:\n                epochs_since_improve\
+          \ += 1\n                if epochs_since_improve >= patience:\n         \
+          \           print(f\"Early stop at epoch {epoch+1}\")\n                \
+          \    break\n\n        if best_state is not None:\n            net.load_state_dict(best_state)\n\
+          \n        out_dir = \"/tmp/model_out\"\n        os.makedirs(out_dir, exist_ok=True)\n\
+          \        torch.save(net.state_dict(), os.path.join(out_dir, \"model.pt\"\
+          ))\n\n        net.eval()\n        dummy = torch.randn(1, n_features)\n \
+          \       torch.onnx.export(\n            net,\n            dummy,\n     \
+          \       os.path.join(out_dir, \"model.onnx\"),\n            input_names=[\"\
+          input\"],\n            output_names=[\"logits\"],\n            opset_version=17,\n\
+          \            dynamic_axes={\"input\": {0: \"batch\"}, \"logits\": {0: \"\
+          batch\"}},\n        )\n\n        metadata = {\n            \"framework\"\
+          : \"pytorch\",\n            \"framework_version\": torch.__version__,\n\
+          \            \"task\": \"binary_classification\",\n            \"input_features\"\
+          : feature_columns,\n            \"input_shape\": [None, n_features],\n \
+          \           \"pt_file\": \"model.pt\",\n            \"onnx_file\": \"model.onnx\"\
+          ,\n            \"onnx_opset\": 17,\n            \"hyperparameters\": {\n\
+          \                \"learning_rate\": learning_rate,\n                \"dense_1_units\"\
+          : dense_1_units,\n                \"dense_2_units\": dense_2_units,\n  \
+          \              \"dropout\": dropout,\n                \"batch_size\": batch_size,\n\
+          \                \"epochs\": epochs,\n                \"patience\": patience,\n\
+          \                \"validation_split\": validation_split,\n            },\n\
+          \            \"final_metrics\": final_metrics,\n        }\n        with\
+          \ open(os.path.join(out_dir, \"metadata.json\"), \"w\") as f:\n        \
+          \    json.dump(metadata, f)\n\n        s3c = boto3.client(\n           \
+          \ \"s3\",\n            endpoint_url=s3_endpoint,\n            aws_access_key_id=access_key,\n\
+          \            aws_secret_access_key=secret_key,\n            region_name=s3_region,\n\
+          \        )\n        for fname in (\"model.pt\", \"model.onnx\", \"metadata.json\"\
+          ):\n            s3c.upload_file(os.path.join(out_dir, fname), s3_bucket,\
+          \ f\"{model_prefix}/{fname}\")\n        print(f\"Uploaded model artifacts\
+          \ to s3://{s3_bucket}/{model_prefix}/\")\n\n    client = TrainerClient()\n\
+          \    job_name = client.train(\n        runtime=client.get_runtime(runtime_name),\n\
+          \        trainer=CustomTrainer(\n            func=train_fn,\n          \
+          \  func_args={\n                \"learning_rate\": learning_rate,\n    \
+          \            \"dense_1_units\": dense_1_units,\n                \"dense_2_units\"\
+          : dense_2_units,\n                \"dropout\": dropout,\n              \
+          \  \"batch_size\": batch_size,\n                \"epochs\": epochs,\n  \
+          \              \"patience\": patience,\n                \"validation_split\"\
+          : validation_split,\n                \"s3_bucket\": s3_bucket,\n       \
+          \         \"s3_endpoint\": s3_endpoint,\n                \"s3_region\":\
+          \ s3_region,\n                \"model_prefix\": model_prefix,\n        \
+          \        \"access_key\": access_key,\n                \"secret_key\": secret_key,\n\
+          \            },\n            packages_to_install=[\n                \"torch\"\
+          ,\n                \"pandas\",\n                \"boto3\",\n           \
+          \     \"onnx\",\n            ],\n            num_nodes=num_nodes,\n    \
+          \    ),\n        initializer=Initializer(\n            dataset=S3DatasetInitializer(\n\
+          \                storage_uri=f\"s3://{s3_bucket}/{data_prefix}\",\n    \
+          \            endpoint=s3_endpoint,\n                access_key_id=access_key,\n\
+          \                secret_access_key=secret_key,\n                region=s3_region,\n\
+          \            )\n        ),\n    )\n    print(f\"Submitted TrainJob: {job_name}\"\
+          )\n\n    terminal_success = {\"succeeded\", \"complete\"}\n    terminal_failure\
+          \ = {\"failed\", \"error\"}\n    while True:\n        info = client.get_job(job_name)\n\
+          \        status_obj = getattr(info, \"status\", info)\n        status_str\
+          \ = str(status_obj).lower()\n        print(f\"TrainJob status: {status_obj}\"\
+          )\n        if any(s in status_str for s in terminal_success):\n        \
+          \    break\n        if any(s in status_str for s in terminal_failure):\n\
+          \            try:\n                for line in client.get_job_logs(job_name):\n\
+          \                    print(line)\n            except Exception as e:\n \
+          \               print(f\"(could not stream logs: {e})\")\n            raise\
+          \ RuntimeError(f\"TrainJob {job_name} failed with status {status_obj}\"\
+          )\n        time.sleep(15)\n\n    try:\n        for line in client.get_job_logs(job_name):\n\
+          \            print(line)\n    except Exception as e:\n        print(f\"\
+          (log streaming after completion failed: {e})\")\n\n    os.makedirs(model.path,\
+          \ exist_ok=True)\n    for fname in (\"model.pt\", \"model.onnx\", \"metadata.json\"\
+          ):\n        s3.download_file(s3_bucket, f\"{model_prefix}/{fname}\", os.path.join(model.path,\
+          \ fname))\n\n    with open(os.path.join(model.path, \"metadata.json\"))\
+          \ as f:\n        md = json.load(f)\n    for k, v in md.items():\n      \
+          \  model.metadata[k] = v\n    model.metadata[\"trainjob_name\"] = job_name\n\
+          \    model.metadata[\"s3_model_uri\"] = f\"s3://{s3_bucket}/{model_prefix}\"\
+          \n\n"
         image: python:3.12
     exec-pull-data:
       container:
@@ -287,11 +472,11 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==3.0.2'\
-          \ 'dvc[s3]==3.67.1' 'python-dotenv==1.2.2' 'gitpython==3.1.50' 'aiohttp==3.13.5'\
-          \ 'cryptography==48.0.0' 'pygments==2.20.0'  &&  python3 -m pip install\
-          \ --quiet --no-warn-script-location 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
-          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.3.3'\
+          \ 'boto3==1.43.6' 'requests==2.33.1' 'urllib3==2.7.0' 'pygments==2.20.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -303,15 +488,16 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef pull_data(\n    matches_csv: Output[Dataset],\n):\n    from dvc.api\
-          \ import DVCFileSystem\n    import os\n    import pandas as pd\n\n    repo\
-          \ = DVCFileSystem(\n        os.environ[\"DVC_GIT_REPO\"],\n        remote=\"\
-          s3-storage\",\n        remote_config={\n            \"access_key_id\": os.environ[\"\
-          DVC_S3_ACCESS_KEY\"],\n            \"secret_access_key\": os.environ[\"\
-          DVC_S3_SECRET_KEY\"],\n        },\n    )\n\n    with repo.open(\"data/raw/dataset.csv\"\
-          ) as f:\n        df = pd.read_csv(f)\n\n    df.to_csv(matches_csv.path)\n\
-          \n"
-        image: python:3.14
+          \ *\n\ndef pull_data(\n    matches_csv: Output[Dataset],\n    s3_bucket:\
+          \ str = \"mlops-bif\",\n    s3_key: str = \"data/raw/dataset.csv\",\n  \
+          \  s3_endpoint: str = \"https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com\"\
+          ,\n    s3_region: str = \"auto\",\n):\n    import os\n\n    import boto3\n\
+          \n    s3 = boto3.client(\n        \"s3\",\n        endpoint_url=s3_endpoint,\n\
+          \        aws_access_key_id=os.environ[\"DVC_S3_ACCESS_KEY\"],\n        aws_secret_access_key=os.environ[\"\
+          DVC_S3_SECRET_KEY\"],\n        region_name=s3_region,\n    )\n    s3.download_file(s3_bucket,\
+          \ s3_key, matches_csv.path)\n    print(f\"Downloaded s3://{s3_bucket}/{s3_key}\
+          \ to {matches_csv.path}\")\n\n"
+        image: python:3.12
 pipelineInfo:
   name: cs-go-match-predictor-train
 root:
@@ -356,10 +542,43 @@ root:
         - feature-preprocessing
         inputs:
           artifacts:
+            test_csv:
+              taskOutputArtifact:
+                outputArtifactKey: test_csv
+                producerTask: feature-preprocessing
             train_csv:
               taskOutputArtifact:
                 outputArtifactKey: train_csv
                 producerTask: feature-preprocessing
+          parameters:
+            batch_size:
+              componentInputParameter: batch_size
+            dense_1_units:
+              componentInputParameter: dense_1_units
+            dense_2_units:
+              componentInputParameter: dense_2_units
+            dropout:
+              componentInputParameter: dropout
+            epochs:
+              componentInputParameter: epochs
+            learning_rate:
+              componentInputParameter: learning_rate
+            num_nodes:
+              componentInputParameter: num_nodes
+            patience:
+              componentInputParameter: patience
+            runtime_name:
+              componentInputParameter: runtime_name
+            s3_bucket:
+              componentInputParameter: s3_bucket
+            s3_endpoint:
+              componentInputParameter: s3_endpoint
+            s3_prefix:
+              componentInputParameter: s3_prefix
+            s3_region:
+              componentInputParameter: s3_region
+            validation_split:
+              componentInputParameter: validation_split
         taskInfo:
           name: feature-train-model
       pull-data:
@@ -367,8 +586,80 @@ root:
           enableCache: true
         componentRef:
           name: comp-pull-data
+        inputs:
+          parameters:
+            s3_bucket:
+              componentInputParameter: s3_bucket
+            s3_endpoint:
+              componentInputParameter: s3_endpoint
+            s3_key:
+              componentInputParameter: s3_dataset_key
+            s3_region:
+              componentInputParameter: s3_region
         taskInfo:
           name: pull-data
+  inputDefinitions:
+    parameters:
+      batch_size:
+        defaultValue: 128.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      dense_1_units:
+        defaultValue: 64.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      dense_2_units:
+        defaultValue: 16.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      dropout:
+        defaultValue: 0.3
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      epochs:
+        defaultValue: 100.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      learning_rate:
+        defaultValue: 0.001
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      num_nodes:
+        defaultValue: 1.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      patience:
+        defaultValue: 10.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      runtime_name:
+        defaultValue: torch-distributed
+        isOptional: true
+        parameterType: STRING
+      s3_bucket:
+        defaultValue: mlops-bif
+        isOptional: true
+        parameterType: STRING
+      s3_dataset_key:
+        defaultValue: data/raw/dataset.csv
+        isOptional: true
+        parameterType: STRING
+      s3_endpoint:
+        defaultValue: https://b09595e7413d52541d55ebc0bf445b9c.r2.cloudflarestorage.com
+        isOptional: true
+        parameterType: STRING
+      s3_prefix:
+        defaultValue: kfp-runs
+        isOptional: true
+        parameterType: STRING
+      s3_region:
+        defaultValue: auto
+        isOptional: true
+        parameterType: STRING
+      validation_split:
+        defaultValue: 0.2
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
 schemaVersion: 2.1.0
 sdkVersion: kfp-2.16.1
 ---
@@ -376,11 +667,9 @@ platforms:
   kubernetes:
     deploymentSpec:
       executors:
-        exec-pull-data:
+        exec-feature-train-model:
           secretAsEnv:
           - keyToEnv:
-            - envVar: DVC_GIT_REPO
-              secretKey: DVC_GIT_REPO
             - envVar: DVC_S3_ACCESS_KEY
               secretKey: DVC_S3_ACCESS_KEY
             - envVar: DVC_S3_SECRET_KEY
@@ -390,10 +679,15 @@ platforms:
             secretNameParameter:
               runtimeValue:
                 constant: dvc-credentials
-          secretAsVolume:
-          - mountPath: /root/.ssh
+        exec-pull-data:
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: DVC_S3_ACCESS_KEY
+              secretKey: DVC_S3_ACCESS_KEY
+            - envVar: DVC_S3_SECRET_KEY
+              secretKey: DVC_S3_SECRET_KEY
             optional: false
-            secretName: dvc-ssh-key
+            secretName: dvc-credentials
             secretNameParameter:
               runtimeValue:
-                constant: dvc-ssh-key
+                constant: dvc-credentials
